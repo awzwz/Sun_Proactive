@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import type { Prisma } from "@prisma/client";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -56,7 +57,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Заявка не найдена или нет прав" }, { status: 404 });
   }
 
-  let newStatus: string;
+  let newStatus: Prisma.ApplicationUpdateInput["status"];
   // APPROVE -> VERIFIED (Volunteer gets stats + rating)
   // REJECT -> ACCEPTED (Volunteer can upload again) or back to ACCEPTED for no-photo tasks
   if (action === "APPROVE") {
@@ -67,7 +68,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Неверное действие" }, { status: 400 });
   }
 
-  const updateData: { status: string; volunteerRating?: number } = { status: newStatus };
+  const updateData: Prisma.ApplicationUpdateInput = { status: newStatus };
   if (action === "APPROVE" && typeof rating === "number") {
     updateData.volunteerRating = rating;
   }
