@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 
 interface Message {
   role: "user" | "assistant";
@@ -21,6 +22,22 @@ export function InterviewerChat() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+
+  const handleTranscript = useCallback((text: string) => {
+    setInput((prev) => (prev ? prev + " " + text : text));
+  }, []);
+
+  const handleVoiceError = useCallback((msg: string) => {
+    toast.error(msg);
+  }, []);
+
+  const voice = useVoiceRecorder({
+    onTranscript: handleTranscript,
+    onError: handleVoiceError,
+  });
+
+  const formatDuration = (s: number) =>
+    `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -217,6 +234,31 @@ export function InterviewerChat() {
         {/* Chat Input */}
         {!taskData && (
           <div className="p-6 bg-surface-container-lowest">
+            {/* Recording indicator bar */}
+            {voice.state === "recording" && (
+              <div className="max-w-4xl mx-auto mb-3 flex items-center gap-3 px-4 py-2.5 bg-red-50 dark:bg-red-950/30 rounded-2xl">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+                </span>
+                <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                  Запись... {formatDuration(voice.duration)}
+                </span>
+                <span className="text-xs text-red-400 dark:text-red-500 ml-auto">
+                  Нажмите стоп для распознавания
+                </span>
+              </div>
+            )}
+
+            {voice.state === "transcribing" && (
+              <div className="max-w-4xl mx-auto mb-3 flex items-center gap-3 px-4 py-2.5 bg-primary/5 rounded-2xl">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+                <span className="text-sm font-medium text-primary">
+                  Распознаю речь...
+                </span>
+              </div>
+            )}
+
             <div className="relative max-w-4xl mx-auto">
               <textarea
                 value={input}
@@ -227,18 +269,51 @@ export function InterviewerChat() {
                     sendMessage(input);
                   }
                 }}
-                className="w-full bg-surface-container-low border-none rounded-2xl px-6 py-4 pr-16 text-sm focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40 resize-none transition-all outline-none"
-                placeholder="Опишите детали задачи..."
+                className="w-full bg-surface-container-low border-none rounded-2xl px-6 py-4 pr-28 text-sm focus:ring-2 focus:ring-primary/20 placeholder:text-on-surface-variant/40 resize-none transition-all outline-none"
+                placeholder={
+                  voice.state === "transcribing"
+                    ? "Распознаю речь..."
+                    : "Опишите детали задачи или нажмите на микрофон..."
+                }
                 rows={2}
-                disabled={loading}
+                disabled={loading || voice.state === "transcribing"}
               />
-              <button
-                onClick={() => sendMessage(input)}
-                disabled={loading || !input.trim()}
-                className="absolute right-4 top-1/2 -translate-y-1/2 bg-primary text-white w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-md disabled:opacity-50"
-              >
-                <span className="material-symbols-outlined">send</span>
-              </button>
+              <div className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-2">
+                {/* Mic button */}
+                {voice.isSupported && (
+                  <button
+                    onClick={
+                      voice.state === "recording"
+                        ? voice.stopRecording
+                        : voice.startRecording
+                    }
+                    disabled={loading || voice.state === "transcribing"}
+                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-all shadow-md disabled:opacity-50 ${
+                      voice.state === "recording"
+                        ? "bg-red-500 text-white hover:bg-red-600 animate-pulse"
+                        : "bg-surface-container-high text-on-surface-variant hover:bg-surface-container hover:scale-105 active:scale-95"
+                    }`}
+                    title={
+                      voice.state === "recording"
+                        ? "Остановить запись"
+                        : "Голосовой ввод"
+                    }
+                  >
+                    <span className="material-symbols-outlined text-[20px]">
+                      {voice.state === "recording" ? "stop" : "mic"}
+                    </span>
+                  </button>
+                )}
+
+                {/* Send button */}
+                <button
+                  onClick={() => sendMessage(input)}
+                  disabled={loading || !input.trim() || voice.state !== "idle"}
+                  className="bg-primary text-white w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-md disabled:opacity-50"
+                >
+                  <span className="material-symbols-outlined">send</span>
+                </button>
+              </div>
             </div>
             <p className="text-center text-[10px] text-on-surface-variant/50 mt-3 font-medium">
               ИИ Sun Proactive помогает структурировать задачи для точного подбора
