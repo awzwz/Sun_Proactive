@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AppShell } from "@/components/layout/AppShell";
@@ -35,7 +35,7 @@ const statusLabels: Record<string, string> = {
 
 type FilterStatus = "ALL" | "DRAFT" | "ACTIVE" | "COMPLETED" | "CANCELLED";
 
-export default function CuratorTasksPage() {
+function CuratorTasksPageContent() {
   const { data: session } = useSession();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -157,5 +157,25 @@ export default function CuratorTasksPage() {
         )}
       </div>
     </AppShell>
+  );
+}
+
+function CuratorTasksPageFallback() {
+  return (
+    <AppShell>
+      <div className="space-y-6 animate-pulse">
+        <div className="h-12 bg-surface-container rounded-xl w-64" />
+        <div className="h-10 bg-surface-container rounded-xl w-96" />
+        <div className="h-64 bg-surface-container rounded-xl" />
+      </div>
+    </AppShell>
+  );
+}
+
+export default function CuratorTasksPage() {
+  return (
+    <Suspense fallback={<CuratorTasksPageFallback />}>
+      <CuratorTasksPageContent />
+    </Suspense>
   );
 }
