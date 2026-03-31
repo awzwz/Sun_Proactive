@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserRole {
+  CURATOR
+  VOLUNTEER
+}
+
+enum TaskStatus {
+  DRAFT
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+enum ApplicationStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  VERIFIED
+}
+
+enum TaskFormat {
+  ONLINE
+  OFFLINE
+  HYBRID
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  role         UserRole
+  bio          String?
+  skills       String[]
+  interests    String[]
+  goals        String?
+  city         String?
+  avatarUrl    String?
+
+  /// Vector embedding for semantic matching (stored via raw SQL)
+  profileEmbedding Unsupported("vector(1536)")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tasksCreated  Task[]         @relation("CuratorTasks")
+  applications  Application[]  @relation("VolunteerApplications")
+  chatMessages  ChatMessage[]
+  notifications Notification[]
+
+  conversations Conversation[] @relation("ConversationParticipants")
+  sentMessages  DirectMessage[] @relation("SentMessages")
+}
+
+model Task {
+  id        String @id @default(cuid())
+  curatorId String
+  curator   User   @relation("CuratorTasks", fields: [curatorId], references: [id])
+
+  // Structured fields from AI Interviewer
+  title          String
+  description    String
+  date           DateTime
+  location       String
+  city           String?
+  format         TaskFormat @default(OFFLINE)
+  requiredSkills String[]
+  softSkills     String[]
+  volunteerQuota Int        @default(5)
+  hours          Int        @default(4)
+
+  status TaskStatus @default(DRAFT)
+
+  // AI interview data
+  interviewHistory Json?
+  rawInput         String?
+
+  // Vision verification criteria
+  verificationCriteria String?
+
+  /// Vector embedding for semantic search (stored via raw SQL)
+  descriptionEmbedding Unsupported("vector(1536)")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  applications Application[]
+  chatMessages ChatMessage[]
+}
+
+model Application {
+  id          String @id @default(cuid())
+  taskId      String
+  task        Task   @relation(fields: [taskId], references: [id])
+  volunteerId String
+  volunteer   User   @relation("VolunteerApplications", fields: [volunteerId], references: [id])
+
+  status         ApplicationStatus @default(PENDING)
+  matchScore     Float?
+  matchReasoning String?
+
+  // Reranking factors stored for Trust UI
+  rerankingFactors Json?
+
+  // Verification
+  completionPhotos   String[]
+  verificationResult Json? // {approved, confidence, comment, detectedElements}
+
+  // Curator rating after task completion (1-5)
+  volunteerRating Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([taskId, volunteerId])
+}
+
+model ChatMessage {
+  id      String @id @default(cuid())
+  taskId  String?
+  task    Task?  @relation(fields: [taskId], references: [id])
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
+
+  role      String // "user" | "assistant" | "system"
+  content   String
+  metadata  Json?  // citations, structured outputs, etc.
+
+  chatType  String // "interviewer" | "consultant"
+  sessionId String
+
+  createdAt DateTime @default(now())
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  participants User[]           @relation("ConversationParticipants")
+  messages     DirectMessage[]
+}
+
+model DirectMessage {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+
+  content  String
+  edited   Boolean @default(false)
+  deleted  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id])
+
+  title    String
+  body     String
+  type     String // "match_found" | "quota_warning" | "verification_result" | "deadline_alert"
+  metadata Json?
+  read     Boolean @default(false)
+
+  createdAt DateTime @default(now())
+}
