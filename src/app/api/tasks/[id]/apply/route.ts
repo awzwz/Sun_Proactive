@@ -1,12 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@prisma/client";
 import {
   generateEmbedding,
   buildProfileText,
   buildTaskText,
 } from "@/lib/embeddings";
 import { generateMatchExplanation } from "@/lib/matching";
+
+function isJsonValue(value: unknown): value is Prisma.InputJsonValue {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return true;
+  }
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (typeof value === "object") {
+    return Object.values(value as Record<string, unknown>).every(isJsonValue);
+  }
+  return false;
+}
 
 export async function POST(
   req: NextRequest,
@@ -35,9 +52,19 @@ export async function POST(
   }
 
   // Curator adding a volunteer from AI match results
-  if (user.role === "CURATOR" && body.volunteerId) {
+  const volunteerId =
+    typeof body.volunteerId === "string" ? body.volunteerId : undefined;
+
+  if (user.role === "CURATOR" && volunteerId) {
+    const matchScore = typeof body.matchScore === "number" ? body.matchScore : null;
+    const matchReasoning =
+      typeof body.matchReasoning === "string" ? body.matchReasoning : null;
+    const rerankingFactors = isJsonValue(body.rerankingFactors)
+      ? body.rerankingFactors
+      : Prisma.DbNull;
+
     const existing = await prisma.application.findUnique({
-      where: { taskId_volunteerId: { taskId, volunteerId: body.volunteerId } },
+      where: { taskId_volunteerId: { taskId, volunteerId } },
     });
     if (existing) {
       return NextResponse.json({ error: "Волонтёр уже в списке заявок" }, { status: 409 });
@@ -46,10 +73,10 @@ export async function POST(
     const application = await prisma.application.create({
       data: {
         taskId,
-        volunteerId: body.volunteerId,
-        matchScore: body.matchScore ?? null,
-        matchReasoning: body.matchReasoning ?? null,
-        rerankingFactors: body.rerankingFactors ?? null,
+        volunteerId,
+        matchScore,
+        matchReasoning,
+        rerankingFactors,
       },
     });
     return NextResponse.json({ application });
